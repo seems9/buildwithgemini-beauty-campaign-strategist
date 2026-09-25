@@ -1,5 +1,7 @@
 # Beauty Campaign Strategist
 
+#BuildwithGemini
+
 An intelligent conversational AI agent built for beauty marketing and merchandising teams. The agent assists brand managers and creative strategists in planning marketing campaigns, researching trending ingredients and viral beauty narratives, exploring curated product catalogs, generating visual concept mockups, and persisting campaign pitches.
 
 ---
