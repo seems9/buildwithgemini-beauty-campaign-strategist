@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import base64
 import datetime
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
@@ -25,9 +26,12 @@ from google.adk.apps import App
 from google.adk.models import Gemini
 from google.adk.tools import ToolContext
 from google.adk.tools.preload_memory_tool import PreloadMemoryTool
+import google.auth
+import google.auth.transport.requests
 from google.cloud import firestore, storage
 from google import genai
 from google.genai import types
+import requests
 
 from .a2ui_utils import a2ui_callback
 
@@ -269,6 +273,99 @@ async def generate_campaign_visual(
     }
 
 
+async def generate_campaign_video(
+    prompt: str,
+    asset_name: str,
+    tool_context: ToolContext,
+    aspect_ratio: str = "9:16",
+    duration: str = "3s",
+) -> Dict[str, Any]:
+    """Generate a short social media ad video for a beauty item or campaign using Google's Omni model (gemini-omni-flash-preview) in the global region.
+
+    The video is saved as a session artifact and uploaded to the public Cloud Storage bucket.
+
+    Args:
+        prompt: Detailed creative prompt describing the short social media video ad (e.g. 'Aesthetic 3-second macro video of liquid beauty serum droplet dropping into water with soft lighting').
+        asset_name: Short kebab-case or snake_case name for the video asset (e.g. 'hydrating-toner-social-ad', 'lip-oil-glaze-reel').
+        tool_context: ADK ToolContext automatically injected by the runtime.
+        aspect_ratio: Video aspect ratio, e.g. '9:16' for vertical reels/TikTok or '16:9' for horizontal landscape.
+        duration: Video duration between '3s' and '10s' (e.g. '3s', '5s').
+
+    Returns:
+        A dictionary containing the public Cloud Storage URL (https://storage.googleapis.com/<bucket>/<object>),
+        artifact details, and confirmation message.
+    """
+    clean_name = asset_name.strip().lower().replace(" ", "-").replace(".mp4", "")
+    filename = f"{clean_name}.mp4"
+
+    # 1. Acquire Google Auth credentials for Interactions API call
+    credentials, _ = google.auth.default()
+    auth_req = google.auth.transport.requests.Request()
+    credentials.refresh(auth_req)
+
+    url = f"https://aiplatform.googleapis.com/v1beta1/projects/{PROJECT_ID}/locations/global/interactions"
+    headers = {
+        "Authorization": f"Bearer {credentials.token}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": "gemini-omni-flash-preview",
+        "input": [{"type": "text", "text": prompt}],
+        "response_format": [
+            {
+                "type": "video",
+                "aspect_ratio": aspect_ratio if aspect_ratio in ["9:16", "16:9"] else "9:16",
+                "duration": duration if duration in ["3s", "4s", "5s", "6s", "7s", "8s", "9s", "10s"] else "3s",
+            }
+        ],
+        "generation_config": {
+            "video_config": {
+                "task": "text_to_video"
+            }
+        },
+    }
+
+    resp = requests.post(url, headers=headers, json=payload, timeout=180)
+    if resp.status_code != 200:
+        return {
+            "status": "error",
+            "message": f"Failed to generate video with gemini-omni-flash-preview: HTTP {resp.status_code} - {resp.text}",
+        }
+
+    resp_data = resp.json()
+    video_bytes = None
+    for step in resp_data.get("steps", []):
+        if step.get("type") == "model_output":
+            for content_item in step.get("content", []):
+                if content_item.get("type") == "video" and "data" in content_item:
+                    video_bytes = base64.b64decode(content_item["data"])
+                    break
+
+    if not video_bytes:
+        return {"status": "error", "message": "No video data returned from gemini-omni-flash-preview."}
+
+    # 2. Save video as a session artifact
+    artifact_part = types.Part.from_bytes(data=video_bytes, mime_type="video/mp4")
+    await tool_context.save_artifact(filename=filename, artifact=artifact_part)
+
+    # 3. Upload video bytes to public Cloud Storage bucket
+    storage_client = storage.Client(project=PROJECT_ID)
+    bucket = storage_client.bucket(BUCKET_NAME)
+    timestamp = datetime.datetime.now(ZoneInfo("UTC")).strftime("%Y%m%d%H%M%S")
+    object_name = f"videos/{timestamp}_{filename}"
+    blob = bucket.blob(object_name)
+    blob.upload_from_string(video_bytes, content_type="video/mp4")
+
+    public_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{object_name}"
+
+    return {
+        "status": "success",
+        "message": f"Social media ad video generated and saved as artifact '{filename}'.",
+        "public_url": public_url,
+        "artifact_name": filename,
+    }
+
+
 async def generate_memories_callback(callback_context: CallbackContext):
     """Save session to Memory Bank after each turn to extract user preferences and durable facts."""
     await callback_context.add_session_to_memory()
@@ -327,6 +424,7 @@ root_agent = Agent(
     tools=[
         PreloadMemoryTool(),
         generate_campaign_visual,
+        generate_campaign_video,
         get_beauty_trends,
         list_products,
         list_campaign_pitches,

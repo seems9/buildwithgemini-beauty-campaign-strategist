@@ -24,7 +24,11 @@ Based on the implemented codebase in `app/`, the agent provides:
    - `generate_campaign_visual`: Generates creative concept art and product hero shot mockups using `gemini-3.1-flash-lite-image` via the Google GenAI Vertex AI client.
    - Saves the generated asset into session artifacts and uploads high-resolution images to a public **Google Cloud Storage** bucket, returning a permanent HTTPS asset URL.
 
-5. **Rich A2UI Card Surfaces**:
+5. **Short Social Media Ad Video Generation (Google Omni + Cloud Storage)**:
+   - `generate_campaign_video`: Generates short 3-10 second vertical (9:16) or landscape (16:9) video ads using Google's Omni model (`gemini-omni-flash-preview`) in the `global` location via the Interactions API.
+   - Saves the generated video bytes into session artifacts (`tool_context.save_artifact`) so they appear in the Playground Artifacts panel, and uploads them to the public **Google Cloud Storage** bucket, returning a permanent HTTPS asset URL.
+
+6. **Rich A2UI Card Surfaces**:
    - Uses `a2ui-agent-sdk` (`A2uiSchemaManager` v0.8 + `BasicCatalog`) and an `after_model_callback` to format responses into clean UI cards (`Card`, `Column`, `Row`, `Text`, `Image`) instead of plain unstructured text.
 
 ---
@@ -33,6 +37,7 @@ Based on the implemented codebase in `app/`, the agent provides:
 
 - **Reasoning Model**: `gemini-2.5-flash` via Google Vertex AI
 - **Image Generation Model**: `gemini-3.1-flash-lite-image` (Global Region)
+- **Video Generation Model**: `gemini-omni-flash-preview` (Global Region)
 - **Agent Framework**: Google Agent Development Kit (ADK) / Agent Runtime (A2A protocol)
 - **Memory Service**: Vertex AI Memory Bank (`VertexAiMemoryBankService`)
 - **Database**: Google Cloud Firestore (`products` and `campaign_pitches` collections)
@@ -49,6 +54,7 @@ Based on the implemented codebase in `app/`, the agent provides:
 | Product Catalog Search | **Implemented** | Cloud Firestore collection queries |
 | Trend Intelligence | **Implemented** | Curated intelligence database (`get_beauty_trends`) |
 | Image Concept Mockups | **Implemented** | `gemini-3.1-flash-lite-image` + Cloud Storage upload |
+| Short Video Ad Generation | **Implemented** | `gemini-omni-flash-preview` + Cloud Storage upload |
 | A2UI Card Generation | **Implemented** | A2UI v0.8 schemas + custom web renderer |
 | Campaign Pitch Storage | **Implemented** | Firestore persistence (`save_campaign_pitch`) |
 | Code Sandbox ROI Modeling | *Planned, not yet implemented* | Sandbox calculation engine planned for future release |
